@@ -1,10 +1,7 @@
 package com.psd.smartcart_ecommerce.controllers;
 
 import com.psd.smartcart_ecommerce.config.AppConstants;
-import com.psd.smartcart_ecommerce.payload.OrderDTO;
-import com.psd.smartcart_ecommerce.payload.OrderRequestDTO;
-import com.psd.smartcart_ecommerce.payload.OrderResponse;
-import com.psd.smartcart_ecommerce.payload.StripePaymentDto;
+import com.psd.smartcart_ecommerce.payload.*;
 import com.psd.smartcart_ecommerce.services.OrderService;
 import com.psd.smartcart_ecommerce.services.StripeService;
 import com.psd.smartcart_ecommerce.util.AuthUtil;
@@ -74,12 +71,12 @@ public class OrderController {
 //        return new ResponseEntity<OrderResponse>(orderResponse, HttpStatus.OK);
 //    }
 //
-//    @PutMapping("/admin/orders/{orderId}/status")
-//    public ResponseEntity<OrderDTO> updateOrderStatus(@PathVariable Long orderId,
-//                                                      @RequestBody OrderStatusUpdateDto orderStatusUpdateDto) {
-//        OrderDTO order = orderService.updateOrder(orderId, orderStatusUpdateDto.getStatus());
-//        return new ResponseEntity<OrderDTO>(order, HttpStatus.OK);
-//    }
+    @PutMapping("/admin/orders/{orderId}/status")
+    public ResponseEntity<OrderDTO> updateOrderStatus(@PathVariable Long orderId,
+                                                      @RequestBody OrderStatusUpdateDto orderStatusUpdateDto) {
+        OrderDTO order = orderService.updateOrder(orderId, orderStatusUpdateDto.getStatus());
+        return new ResponseEntity<OrderDTO>(order, HttpStatus.OK);
+    }
 //
 //    @PutMapping("/seller/orders/{orderId}/status")
 //    public ResponseEntity<OrderDTO> updateOrderStatusSeller(@PathVariable Long orderId,
