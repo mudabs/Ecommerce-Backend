@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+@CrossOrigin(origins = "${app.cors.allowed-origins}", allowCredentials = "true")
 @RestController
 @RequestMapping("/api")
 public class CartController {
