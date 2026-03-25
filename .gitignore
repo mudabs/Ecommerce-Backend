@@ -32,3 +32,16 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Logs ###
+*.log
+spring-run*.log
+spring-run*.err.log
+spring-run*.out.log
+
+### Uploaded images ###
+images/
+
+### Sensitive config - use application-example.properties as template ###
+src/main/resources/application.properties
+src/main/resources/static/

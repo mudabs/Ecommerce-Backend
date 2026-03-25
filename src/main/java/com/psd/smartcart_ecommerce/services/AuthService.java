@@ -21,5 +21,7 @@ public interface AuthService {
 
     ResponseCookie logoutUser();
 
+    AuthenticationResult refreshToken(Authentication authentication);
+
     UserResponse getAllSellers(Pageable pageable);
 }

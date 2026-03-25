@@ -75,6 +75,7 @@ public class WebSecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth ->
                         auth.requestMatchers("/images/**").permitAll()
+                                .requestMatchers("/error").permitAll()
                                 .requestMatchers("/api/auth/**").permitAll()
                                 .requestMatchers("/v3/api-docs/**").permitAll()
                                 .requestMatchers("/h2-console/**").permitAll()
@@ -104,7 +105,8 @@ public class WebSecurityConfig {
                 "/configuration/security",
                 "/swagger-ui.html",
                 "/webjars/**",
-                "/images/**"));
+                "/images/**",
+                "/error"));
     }
 
 }

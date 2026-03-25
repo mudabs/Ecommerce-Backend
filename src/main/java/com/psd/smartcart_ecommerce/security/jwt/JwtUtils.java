@@ -78,19 +78,53 @@ public class JwtUtils {
                 .getPayload().getSubject();
     }
 
+    public Date getExpirationFromJwtToken(String token) {
+        return Jwts.parser()
+                .verifyWith((SecretKey) key())
+                .build().parseSignedClaims(token)
+                .getPayload().getExpiration();
+    }
+
+    public boolean isTokenExpired(String token) {
+        try {
+            Date expiration = getExpirationFromJwtToken(token);
+            return expiration.before(new Date());
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    public long getTimeUntilExpiration(String token) {
+        try {
+            Date expiration = getExpirationFromJwtToken(token);
+            return expiration.getTime() - new Date().getTime();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     private Key key() {
-        return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+        try {
+            // Try Base64 decoding first (for properly formatted secrets)
+            return Keys.hmacShaKeyFor(Decoders.BASE64.decode(jwtSecret));
+        } catch (Exception e) {
+            // Fallback to using the secret as plain text if Base64 decoding fails
+            logger.debug("Using plain text JWT secret (not Base64 encoded)");
+            return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+        }
     }
 
     public boolean validateJwtToken(String authToken) {
         try {
-            System.out.println("Validate");
+            logger.debug("Validating JWT token");
             Jwts.parser().verifyWith((SecretKey) key()).build().parseSignedClaims(authToken);
+            logger.debug("JWT token validation successful");
             return true;
         } catch (MalformedJwtException e) {
             logger.error("Invalid JWT token: {}", e.getMessage());
         } catch (ExpiredJwtException e) {
             logger.error("JWT token is expired: {}", e.getMessage());
+            logger.debug("Token expired at: {}, Current time: {}", e.getClaims().getExpiration(), new Date());
         } catch (UnsupportedJwtException e) {
             logger.error("JWT token is unsupported: {}", e.getMessage());
         } catch (IllegalArgumentException e) {

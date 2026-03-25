@@ -58,6 +58,19 @@ public class AuthController {
                 .body(new MessageResponse("You've been signed out!"));
     }
 
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(Authentication authentication){
+        if (authentication != null) {
+            AuthenticationResult result = authService.refreshToken(authentication);
+            return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE,
+                            result.getJwtCookie().toString())
+                    .body(result.getResponse());
+        } else {
+            return ResponseEntity.status(401)
+                    .body(new MessageResponse("Token refresh failed - authentication required"));
+        }
+    }
+
     @GetMapping("/sellers")
     public ResponseEntity<?> getAllSellers(
             @RequestParam(name = "pageNumber", defaultValue = AppConstants.PAGE_NUMBER, required = false) Integer pageNumber) {
