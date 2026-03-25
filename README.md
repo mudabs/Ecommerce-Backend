@@ -238,3 +238,35 @@ Run tests:
 ```
 
 Current automated test coverage is minimal (`contextLoads`).
+
+## 🚀 Recent Improvements (March 2026)
+
+### Authentication & Payment Issues Resolved ✅
+
+- **Fixed Lombok Configuration:** Resolved compilation issues with getter/setter generation
+- **Enhanced JWT Authentication:** Added dual support for both cookie-based and Authorization header authentication
+- **Added Missing Endpoint:** Created `/api/cart/create` endpoint with proper `CartItemRequest` DTO
+- **Improved JWT Cookie Security:** Updated cookie configuration with proper path, sameSite, and security settings
+- **Resolved 401 Errors:** Fixed authentication issues that were preventing Clerk payment processing
+- **Port Configuration:** Updated to use port 3001 to avoid conflicts
+- **CORS Configuration:** Ensured proper cross-origin support for frontend integration
+
+### Current Status
+- ✅ Backend running on port 3001
+- ✅ Authentication working properly 
+- ✅ Payment processing with Clerk functional
+- ✅ All API endpoints responding correctly
+- ✅ Database connectivity established
+
+### Quick Start
+```bash
+# Build and run
+./mvnw clean package -DskipTests
+java -jar target/SmartCart_Ecommerce-0.0.1-SNAPSHOT.jar
+
+# Or use Maven directly  
+./mvnw spring-boot:run
+```
+
+Access at: `http://localhost:3001/api/*`
+
