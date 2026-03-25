@@ -2,6 +2,7 @@ package com.psd.smartcart_ecommerce.controllers;
 
 import com.psd.smartcart_ecommerce.models.Cart;
 import com.psd.smartcart_ecommerce.payload.CartDTO;
+import com.psd.smartcart_ecommerce.payload.CartItemRequest;
 import com.psd.smartcart_ecommerce.repositories.CartRepository;
 import com.psd.smartcart_ecommerce.repositories.CategoryRepository;
 import com.psd.smartcart_ecommerce.services.CartService;
@@ -25,6 +26,12 @@ public class CartController {
 
     @Autowired
     private CartService cartService;
+
+    @PostMapping("/cart/create")
+    public ResponseEntity<CartDTO> createCartItem(@RequestBody CartItemRequest request) {
+        CartDTO cartDTO = cartService.addProductToCart(request.getProductId(), request.getQuantity());
+        return new ResponseEntity<CartDTO>(cartDTO, HttpStatus.CREATED);
+    }
 
     @PostMapping("/carts/products/{productId}/quantity/{quantity}")
     public ResponseEntity<CartDTO> addProductToCart(@PathVariable Long productId,

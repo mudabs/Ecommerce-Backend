@@ -42,16 +42,22 @@ public class JwtUtils {
     public ResponseCookie generateJwtCookie(UserDetailsImpl userPrincipal) {
         String jwt = generateTokenFromUsername(userPrincipal.getUsername());
         ResponseCookie cookie = ResponseCookie.from(jwtCookie, jwt)
-                .path("/api")
+                .path("/")
                 .maxAge(24 * 60 * 60)
                 .httpOnly(false)
+                .sameSite("Lax")
+                .secure(false) // Set to true in production with HTTPS
                 .build();
         return cookie;
     }
 
     public ResponseCookie getCleanJwtCookie() {
         ResponseCookie cookie = ResponseCookie.from(jwtCookie, null)
-                .path("/api")
+                .path("/")
+                .maxAge(0)
+                .httpOnly(false)
+                .sameSite("Lax")
+                .secure(false)
                 .build();
         return cookie;
     }
