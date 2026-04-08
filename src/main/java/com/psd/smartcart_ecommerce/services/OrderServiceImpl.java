@@ -3,13 +3,15 @@ package com.psd.smartcart_ecommerce.services;
 import com.psd.smartcart_ecommerce.exceptions.APIException;
 import com.psd.smartcart_ecommerce.exceptions.ResourceNotFoundException;
 import com.psd.smartcart_ecommerce.models.*;
+import com.psd.smartcart_ecommerce.payload.AddressDTO;
 import com.psd.smartcart_ecommerce.payload.OrderDTO;
 import com.psd.smartcart_ecommerce.payload.OrderItemDTO;
 import com.psd.smartcart_ecommerce.payload.OrderResponse;
+import com.psd.smartcart_ecommerce.payload.PaymentDTO;
+import com.psd.smartcart_ecommerce.payload.ProductDTO;
 import com.psd.smartcart_ecommerce.repositories.*;
 import com.psd.smartcart_ecommerce.util.AuthUtil;
 import jakarta.transaction.Transactional;
-import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -24,11 +26,89 @@ import java.util.List;
 @Service
 public class OrderServiceImpl implements OrderService {
 
+    private ProductDTO mapProductToDto(Product product) {
+        if (product == null) {
+            return null;
+        }
+
+        ProductDTO productDTO = new ProductDTO();
+        productDTO.setProductId(product.getProductId());
+        productDTO.setProductName(product.getProductName());
+        productDTO.setImage(product.getImage());
+        productDTO.setDescription(product.getDescription());
+        productDTO.setQuantity(product.getQuantity());
+        productDTO.setPrice(product.getPrice());
+        productDTO.setDiscount(product.getDiscount());
+        productDTO.setSpecialPrice(product.getSpecialPrice());
+        return productDTO;
+    }
+
+    private PaymentDTO mapPaymentToDto(Payment payment) {
+        if (payment == null) {
+            return null;
+        }
+
+        PaymentDTO paymentDTO = new PaymentDTO();
+        paymentDTO.setPaymentId(payment.getPaymentId());
+        paymentDTO.setPaymentMethod(payment.getPaymentMethod());
+        paymentDTO.setPgPaymentId(payment.getPgPaymentId());
+        paymentDTO.setPgStatus(payment.getPgStatus());
+        paymentDTO.setPgResponseMessage(payment.getPgResponseMessage());
+        paymentDTO.setPgName(payment.getPgName());
+        return paymentDTO;
+    }
+
+    private AddressDTO mapAddressToDto(Address address) {
+        if (address == null) {
+            return null;
+        }
+
+        AddressDTO addressDTO = new AddressDTO();
+        addressDTO.setAddressId(address.getAddressId());
+        addressDTO.setStreet(address.getStreet());
+        addressDTO.setBuildingName(address.getBuildingName());
+        addressDTO.setCity(address.getCity());
+        addressDTO.setState(address.getState());
+        addressDTO.setCountry(address.getCountry());
+        addressDTO.setPincode(address.getPincode());
+        return addressDTO;
+    }
+
+    private OrderItemDTO mapOrderItemToDto(OrderItem orderItem) {
+        if (orderItem == null) {
+            return null;
+        }
+
+        OrderItemDTO orderItemDTO = new OrderItemDTO();
+        orderItemDTO.setOrderItemId(orderItem.getOrderItemId());
+        orderItemDTO.setProduct(mapProductToDto(orderItem.getProduct()));
+        orderItemDTO.setQuantity(orderItem.getQuantity());
+        orderItemDTO.setDiscount(orderItem.getDiscount());
+        orderItemDTO.setOrderedProductPrice(orderItem.getOrderedProductPrice());
+        return orderItemDTO;
+    }
+
     private OrderDTO mapOrderToDto(Order order) {
-        OrderDTO orderDTO = modelMapper.map(order, OrderDTO.class);
+        OrderDTO orderDTO = new OrderDTO();
+        orderDTO.setOrderId(order.getOrderId());
+        orderDTO.setEmail(order.getEmail());
+        orderDTO.setOrderDate(order.getOrderDate());
+        orderDTO.setPayment(mapPaymentToDto(order.getPayment()));
+        orderDTO.setTotalAmount(order.getTotalAmount());
+        orderDTO.setOrderStatus(order.getOrderStatus());
+        orderDTO.setAddress(mapAddressToDto(order.getAddress()));
+
         if (order.getAddress() != null) {
             orderDTO.setAddressId(order.getAddress().getAddressId());
         }
+
+        List<OrderItemDTO> orderItemDTOs = order.getOrderItems() == null
+                ? new ArrayList<>()
+                : order.getOrderItems().stream()
+                .map(this::mapOrderItemToDto)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        orderDTO.setOrderItems(new ArrayList<>(orderItemDTOs));
         return orderDTO;
     }
 
@@ -63,12 +143,6 @@ public class OrderServiceImpl implements OrderService {
     PaymentRepository paymentRepository;
 
     @Autowired
-    CartService cartService;
-
-    @Autowired
-    ModelMapper modelMapper;
-
-    @Autowired
     ProductRepository productRepository;
 
     @Autowired
@@ -99,7 +173,7 @@ public class OrderServiceImpl implements OrderService {
 
         Order savedOrder = orderRepository.save(order);
 
-        List<CartItem> cartItems = cart.getCartItems();
+        List<CartItem> cartItems = new ArrayList<>(cart.getCartItems());
         if (cartItems.isEmpty()) {
             throw new APIException("Cart is empty");
         }
@@ -117,7 +191,7 @@ public class OrderServiceImpl implements OrderService {
 
         orderItems = orderItemRepository.saveAll(orderItems);
 
-        cart.getCartItems().forEach(item -> {
+        cartItems.forEach(item -> {
             int quantity = item.getQuantity();
             Product product = item.getProduct();
 
@@ -126,16 +200,14 @@ public class OrderServiceImpl implements OrderService {
 
             // Save product back to the database
             productRepository.save(product);
-
-            // Remove items from cart
-            cartService.deleteProductFromCart(cart.getCartId(), item.getProduct().getProductId());
         });
 
-        OrderDTO orderDTO = modelMapper.map(savedOrder, OrderDTO.class);
-        orderItems.forEach(item -> orderDTO.getOrderItems().add(modelMapper.map(item, OrderItemDTO.class)));
+        cart.getCartItems().clear();
+        cart.setTotalPrice(0.0);
+        cartRepository.save(cart);
 
-        orderDTO.setAddressId(addressId);
-
+        savedOrder.setOrderItems(orderItems);
+        OrderDTO orderDTO = mapOrderToDto(savedOrder);
         return orderDTO;
     }
 
@@ -177,7 +249,7 @@ public class OrderServiceImpl implements OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order","orderId",orderId));
         order.setOrderStatus(status);
         orderRepository.save(order);
-        return modelMapper.map(order, OrderDTO.class);
+        return mapOrderToDto(order);
     }
 
     @Override
