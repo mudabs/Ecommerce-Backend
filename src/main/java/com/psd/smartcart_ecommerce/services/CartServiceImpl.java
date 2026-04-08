@@ -241,6 +241,7 @@ public class CartServiceImpl implements CartService{
     }
 
 
+    @Transactional
     @Override
     public String deleteCurrentUserProductFromCart(Long productId) {
         Cart cart = getOrCreateCurrentUserCart();
