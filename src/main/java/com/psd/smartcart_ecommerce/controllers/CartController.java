@@ -1,11 +1,8 @@
 package com.psd.smartcart_ecommerce.controllers;
 
-import com.psd.smartcart_ecommerce.models.Cart;
 import com.psd.smartcart_ecommerce.payload.CartDTO;
-import com.psd.smartcart_ecommerce.repositories.CartRepository;
-import com.psd.smartcart_ecommerce.repositories.CategoryRepository;
+import com.psd.smartcart_ecommerce.payload.CartItemRequest;
 import com.psd.smartcart_ecommerce.services.CartService;
-import com.psd.smartcart_ecommerce.util.AuthUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,12 +13,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/api")
 public class CartController {
-
-    @Autowired
-    private CartRepository cartRepository;
-
-    @Autowired
-    private AuthUtil authUtil;
 
     @Autowired
     private CartService cartService;
@@ -41,12 +32,16 @@ public class CartController {
 
     @GetMapping("/carts/users/cart")
     public ResponseEntity<CartDTO> getCartById(){
-        String emailId = authUtil.loggedInEmail();
-        Cart cart = cartRepository.findCartByEmail(emailId);
-        Long cartId = cart.getCartId();
-        CartDTO cartDTO = cartService.getCart(emailId, cartId);
+        CartDTO cartDTO = cartService.getCurrentUserCart();
         return new ResponseEntity<CartDTO>(cartDTO, HttpStatus.OK);
     }
+
+    @PostMapping("/carts/users/cart/sync")
+    public ResponseEntity<CartDTO> syncUserCart(@RequestBody List<CartItemRequest> items) {
+        CartDTO cartDTO = cartService.syncCartItems(items);
+        return new ResponseEntity<>(cartDTO, HttpStatus.OK);
+    }
+
     @PutMapping("/cart/products/{productId}/quantity/{operation}")
     public ResponseEntity<CartDTO> updateCartProduct(@PathVariable Long productId,
                                                      @PathVariable String operation) {
@@ -56,10 +51,17 @@ public class CartController {
 
         return new ResponseEntity<CartDTO>(cartDTO, HttpStatus.OK);
     }
+
+    @DeleteMapping("/carts/users/cart/product/{productId}")
+    public ResponseEntity<String> deleteCurrentUserProductFromCart(@PathVariable Long productId) {
+        String status = cartService.deleteCurrentUserProductFromCart(productId);
+        return new ResponseEntity<>(status, HttpStatus.OK);
+    }
+
     @DeleteMapping("/carts/{cartId}/product/{productId}")
     public ResponseEntity<String> deleteProductFromCart(@PathVariable Long cartId,
                                                         @PathVariable Long productId) {
-        String status = cartService.deleteProductFromCart(cartId, productId);
+        String status = cartService.deleteCurrentUserProductFromCart(productId);
 
         return new ResponseEntity<String>(status, HttpStatus.OK);
     }

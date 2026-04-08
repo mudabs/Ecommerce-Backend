@@ -7,15 +7,17 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class ProductDTO {
+public class CartItemRequest {
     private Long productId;
-    private String productName;
-    private String image;
-    private String description;
     private Integer quantity;
-    private double price;
-    private double discount;
-    private Double specialPrice;
+
+    public Long getProductId() {
+        return productId;
+    }
+
+    public void setProductId(Long productId) {
+        this.productId = productId;
+    }
 
     public Integer getQuantity() {
         return quantity;
