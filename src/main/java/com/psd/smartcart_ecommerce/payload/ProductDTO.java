@@ -16,6 +16,7 @@ public class ProductDTO {
     private double price;
     private double discount;
     private Double specialPrice;
+    private String categoryName;
 
     public Integer getQuantity() {
         return quantity;

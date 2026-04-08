@@ -68,6 +68,12 @@ public class ProductController {
         return new ResponseEntity<>(savedProducts, HttpStatus.CREATED);
     }
 
+    @GetMapping("/public/products/{productId}")
+    public ResponseEntity<ProductDTO> getProductById(@PathVariable Long productId) {
+        ProductDTO productDTO = productService.getProductById(productId);
+        return new ResponseEntity<>(productDTO, HttpStatus.OK);
+    }
+
     @GetMapping("/public/products")
     public ResponseEntity<ProductResponse> getAllProducts(
             @RequestParam(name = "keyword", required = false) String keyword,
