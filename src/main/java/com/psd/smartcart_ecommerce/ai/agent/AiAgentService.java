@@ -104,9 +104,12 @@ public class AiAgentService {
 
     private ChatResponse processWithAssistant(Long userId, String userMessage, ToolExecutionContext ctx) {
         try {
+            String enhanced = enhanceQuery(userMessage);
+            log.info("LLM path for userId={}: original='{}', enhanced='{}'", userId, userMessage, enhanced);
             String preferences = preferenceService.buildPreferenceSummary(userId);
             String categories = loadCategoryNames();
-            String reply = assistant.chat(userId, categories, preferences, userMessage);
+            String reply = assistant.chat(userId, categories, preferences, enhanced);
+            log.info("AI response for userId={}: {}", userId, reply);
 
             ChatResponse response = new ChatResponse();
             response.setMessage(reply);
@@ -127,28 +130,32 @@ public class AiAgentService {
             return simpleResponse("Please type a message to get started.");
         }
 
+        String enhanced = enhanceQuery(userMessage);
+        String normalizedEnhanced = enhanced.toLowerCase(Locale.ROOT);
+        log.info("Fallback path for userId={}: original='{}', enhanced='{}'", userId, userMessage, enhanced);
+
         try {
             String toolResult = null;
             String toolName = null;
 
-            if (isCartOptimizationIntent(normalized)) {
-                Double budget = extractPriceLimit(userMessage);
+            if (isCartOptimizationIntent(normalizedEnhanced)) {
+                Double budget = extractPriceLimit(enhanced);
                 if (budget == null) {
                     return simpleResponse(
                             "I can optimize your cart, but I need a budget. Try: optimize my cart under $200.");
                 }
                 toolName = "optimizeCart";
                 toolResult = tools.optimizeCart(budget);
-            } else if (isCartIntent(normalized)) {
+            } else if (isCartIntent(normalizedEnhanced)) {
                 toolName = "getCart";
                 toolResult = tools.getCart();
-            } else if (isRecommendationIntent(normalized)) {
+            } else if (isRecommendationIntent(normalizedEnhanced)) {
                 toolName = "recommendProducts";
                 toolResult = tools.recommendProducts();
-            } else if (isProductSearchIntent(normalized)) {
+            } else if (isProductSearchIntent(normalizedEnhanced)) {
                 toolName = "searchProducts";
-                String keyword = extractSearchKeyword(userMessage);
-                Double priceMax = extractPriceLimit(userMessage);
+                String keyword = extractSearchKeyword(enhanced);
+                Double priceMax = extractPriceLimit(enhanced);
                 toolResult = tools.searchProducts(
                         keyword.isBlank() ? null : keyword, null, null, priceMax);
             }
@@ -164,8 +171,13 @@ public class AiAgentService {
             log.error("Tool-only fallback failed: {}", e.getMessage(), e);
         }
 
-        return simpleResponse("The AI service is unavailable. Try asking for product search, "
-                + "recommendations, your cart, or cart optimization.");
+        String generalResponse = tryHandleGeneralQuestion(normalized);
+        if (generalResponse != null) {
+            return simpleResponse(generalResponse);
+        }
+
+        return simpleResponse("I'm having a small issue, but I can still help. "
+                + "Try asking about products, your cart, or how to use the app.");
     }
 
     // ==================== Fallback response formatting ====================
@@ -327,5 +339,51 @@ public class AiAgentService {
             log.warn("Failed to load categories: {}", e.getMessage());
             return "unknown";
         }
+    }
+
+    // ==================== Query enhancement ====================
+
+    private String enhanceQuery(String input) {
+        if (input == null || input.isBlank()) return input;
+        String lower = input.trim().toLowerCase(Locale.ROOT);
+
+        // Specific short-query conversions
+        if (lower.equals("phones") || lower.equals("cheap phones") || lower.contains("cheap phone")) {
+            return "search for affordable smartphones under 500 dollars";
+        }
+        if (lower.contains("gaming laptop") && !lower.contains("performance")) {
+            return input + " with good performance";
+        }
+        // Generic cheap enhancement
+        if (lower.contains("cheap") && !lower.contains("under") && !lower.contains("below")) {
+            return input + " under 500 dollars";
+        }
+        return input;
+    }
+
+    // ==================== General / navigation fallback ====================
+
+    private String tryHandleGeneralQuestion(String msg) {
+        if (msg.contains("what can you do") || msg.equals("help") || msg.contains("capabilities")
+                || msg.contains("what do you do") || msg.contains("how can you help")) {
+            return "I'm SmartCart AI! Here's what I can help with:\n"
+                    + "- Search for products (e.g., \"show me laptops\")\n"
+                    + "- View your cart\n"
+                    + "- Get personalized recommendations\n"
+                    + "- Navigate the app (profile, orders, checkout)\n"
+                    + "Just ask me anything!";
+        }
+        if (msg.contains("profile") || msg.contains("edit my") || msg.contains("account settings")) {
+            return "You can access your profile from the top navigation menu. "
+                    + "Click your name or the account icon to edit your personal details.";
+        }
+        if (msg.contains("order history") || msg.contains("past order") || msg.contains("my orders")) {
+            return "You can view your past orders in the \"My Orders\" or \"Order History\" section, "
+                    + "accessible from your profile menu.";
+        }
+        if (msg.contains("checkout") || msg.contains("how to buy") || msg.contains("how do i buy")) {
+            return "Add products to your cart, then click the cart icon in the navbar to proceed to checkout.";
+        }
+        return null;
     }
 }
