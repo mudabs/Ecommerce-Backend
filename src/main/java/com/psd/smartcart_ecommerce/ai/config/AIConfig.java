@@ -34,4 +34,8 @@ public class AIConfig {
     public String getOpenaiApiKey() {
         return openaiApiKey;
     }
+
+    public boolean hasConfiguredApiKey() {
+        return openaiApiKey != null && !openaiApiKey.isBlank();
+    }
 }

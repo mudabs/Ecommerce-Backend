@@ -18,12 +18,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class SmartCartAgent {
 
     private static final Logger log = LoggerFactory.getLogger(SmartCartAgent.class);
     private static final int MAX_TOOL_ITERATIONS = 5;
+    private static final Pattern PRICE_LIMIT_PATTERN = Pattern.compile("(?:under|below|less than|up to|max(?:imum)?(?: price)?)\\s*\\$?(\\d+(?:\\.\\d+)?)", Pattern.CASE_INSENSITIVE);
+    private static final Set<String> SEARCH_STOP_WORDS = Set.of(
+            "find", "me", "a", "an", "the", "show", "need", "want", "looking", "look", "for",
+            "with", "and", "or", "please", "items", "item", "product", "products", "some", "any",
+            "under", "below", "less", "than", "up", "to", "maximum", "max", "price", "my", "cart"
+    );
 
     @Autowired
     private AIConfig aiConfig;
@@ -80,12 +88,16 @@ public class SmartCartAgent {
         List<ProductDTO> collectedProducts = new ArrayList<>();
         String finalResponse = null;
 
+        if (!aiConfig.hasConfiguredApiKey()) {
+            log.warn("OpenAI API key is not configured. Falling back to tool-only mode.");
+            return finalizeFallbackResponse(userId, userMessage, handleToolOnlyFallback(userId, userMessage));
+        }
+
         for (int iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
             Map<String, Object> llmResponse = callOpenAI(messages);
 
             if (llmResponse == null) {
-                finalResponse = "I'm sorry, I'm having trouble connecting right now. Please try again later.";
-                break;
+                return finalizeFallbackResponse(userId, userMessage, handleToolOnlyFallback(userId, userMessage));
             }
 
             JsonNode choices = parseResponseChoices(llmResponse);
@@ -158,6 +170,237 @@ public class SmartCartAgent {
         return response;
     }
 
+    private ChatResponse finalizeFallbackResponse(Long userId, String userMessage, ChatResponse fallbackResponse) {
+        ChatResponse response = fallbackResponse;
+        if (response == null) {
+            response = new ChatResponse();
+            response.setMessage("The AI service is unavailable right now, and I couldn't map that request to a shopping action. Try asking for product search, recommendations, your cart, or a budget-based cart optimization.");
+        }
+
+        conversationMemory.addMessage(userId, "assistant", response.getMessage());
+        return response;
+    }
+
+    private ChatResponse handleToolOnlyFallback(Long userId, String userMessage) {
+        String normalized = userMessage == null ? "" : userMessage.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isBlank()) {
+            return null;
+        }
+
+        try {
+            if (isCartOptimizationIntent(normalized)) {
+                Double budget = extractPriceLimit(userMessage);
+                if (budget == null) {
+                    ChatResponse response = new ChatResponse();
+                    response.setMessage("I can optimize your cart, but I need a budget. Try something like: optimize my cart under $200.");
+                    return response;
+                }
+                return buildToolOnlyResponse(userId, "optimizeCart", Map.of("budget", budget));
+            }
+
+            if (isCartIntent(normalized)) {
+                return buildToolOnlyResponse(userId, "getCart", Map.of());
+            }
+
+            if (isRecommendationIntent(normalized)) {
+                return buildToolOnlyResponse(userId, "recommendProducts", Map.of());
+            }
+
+            if (isProductSearchIntent(normalized)) {
+                Map<String, Object> searchArguments = new LinkedHashMap<>();
+                String keyword = extractSearchKeyword(userMessage);
+                Double priceLimit = extractPriceLimit(userMessage);
+
+                if (!keyword.isBlank()) {
+                    searchArguments.put("keyword", keyword);
+                }
+                if (priceLimit != null) {
+                    searchArguments.put("price_max", priceLimit);
+                }
+
+                return buildToolOnlyResponse(userId, "searchProducts", searchArguments);
+            }
+        } catch (Exception e) {
+            log.error("Tool-only fallback failed for message '{}': {}", userMessage, e.getMessage(), e);
+        }
+
+        return null;
+    }
+
+    private boolean isCartIntent(String normalizedMessage) {
+        return normalizedMessage.contains("cart")
+                && !normalizedMessage.contains("recommend")
+                && !normalizedMessage.contains("suggest")
+                && !normalizedMessage.contains("optimi");
+    }
+
+    private boolean isCartOptimizationIntent(String normalizedMessage) {
+        return normalizedMessage.contains("cart")
+                && (normalizedMessage.contains("budget")
+                || normalizedMessage.contains("cheaper")
+                || normalizedMessage.contains("save")
+                || normalizedMessage.contains("optimi")
+                || normalizedMessage.contains("under $")
+                || normalizedMessage.contains("under "));
+    }
+
+    private boolean isRecommendationIntent(String normalizedMessage) {
+        return normalizedMessage.contains("recommend")
+                || normalizedMessage.contains("suggest")
+                || normalizedMessage.contains("for me")
+                || normalizedMessage.contains("what should i buy");
+    }
+
+    private boolean isProductSearchIntent(String normalizedMessage) {
+        return normalizedMessage.contains("find")
+                || normalizedMessage.contains("show")
+                || normalizedMessage.contains("search")
+                || normalizedMessage.contains("looking for")
+                || normalizedMessage.contains("need")
+                || normalizedMessage.contains("want")
+                || PRICE_LIMIT_PATTERN.matcher(normalizedMessage).find();
+    }
+
+    private Double extractPriceLimit(String userMessage) {
+        Matcher matcher = PRICE_LIMIT_PATTERN.matcher(userMessage == null ? "" : userMessage);
+        if (matcher.find()) {
+            return Double.parseDouble(matcher.group(1));
+        }
+        return null;
+    }
+
+    private String extractSearchKeyword(String userMessage) {
+        if (userMessage == null) {
+            return "";
+        }
+
+        String normalized = userMessage.toLowerCase(Locale.ROOT)
+                .replaceAll("\\$\\d+(?:\\.\\d+)?", " ")
+                .replaceAll("[^a-z0-9\\s]", " ");
+
+        List<String> tokens = Arrays.stream(normalized.split("\\s+"))
+                .map(String::trim)
+                .filter(token -> !token.isEmpty())
+                .filter(token -> !SEARCH_STOP_WORDS.contains(token))
+                .toList();
+
+        return String.join(" ", tokens).trim();
+    }
+
+    private ChatResponse buildToolOnlyResponse(Long userId, String toolName, Map<String, Object> arguments) throws Exception {
+        Map<String, Object> toolArgs = new LinkedHashMap<>(arguments);
+        String toolResult = executeTool(toolName, objectMapper.writeValueAsString(toolArgs), userId);
+
+        List<ProductDTO> products = new ArrayList<>();
+        extractProducts(toolResult, products);
+
+        ChatResponse response = new ChatResponse();
+        response.setMessage(formatToolOnlyResponse(toolName, toolResult));
+        response.setProducts(products.isEmpty() ? null : products);
+        response.setToolsUsed(List.of(toolName));
+        return response;
+    }
+
+    private String formatToolOnlyResponse(String toolName, String toolResult) throws Exception {
+        JsonNode root = objectMapper.readTree(toolResult);
+
+        if (root.has("error")) {
+            return "I ran into a problem while processing that request: " + root.get("error").asText();
+        }
+
+        return switch (toolName) {
+            case "searchProducts" -> formatSearchResponse(root);
+            case "recommendProducts" -> formatRecommendationResponse(root);
+            case "getCart" -> formatCartResponse(root);
+            case "optimizeCart" -> formatCartOptimizationResponse(root);
+            default -> "I completed the request, but I could not format the result.";
+        };
+    }
+
+    private String formatSearchResponse(JsonNode root) {
+        JsonNode results = root.get("results");
+        if (results == null || results.isEmpty()) {
+            return root.has("message") ? root.get("message").asText() : "No matching products found.";
+        }
+
+        List<String> lines = new ArrayList<>();
+        lines.add("Here are the best matches I found:");
+        for (int i = 0; i < Math.min(3, results.size()); i++) {
+            JsonNode item = results.get(i);
+            lines.add("- " + item.path("productName").asText()
+                    + " for $" + String.format(Locale.US, "%.2f", item.path("specialPrice").asDouble(item.path("price").asDouble())));
+        }
+        if (root.has("totalFound")) {
+            lines.add("Total matches: " + root.get("totalFound").asInt());
+        }
+        return String.join("\n", lines);
+    }
+
+    private String formatRecommendationResponse(JsonNode root) {
+        JsonNode recommendations = root.get("recommendations");
+        if (recommendations == null || recommendations.isEmpty()) {
+            return "I couldn't find any recommendations yet. Try browsing or searching for products first.";
+        }
+
+        List<String> lines = new ArrayList<>();
+        lines.add("Based on your activity, here are a few recommendations:");
+        for (int i = 0; i < Math.min(3, recommendations.size()); i++) {
+            JsonNode item = recommendations.get(i);
+            lines.add("- " + item.path("productName").asText()
+                    + " for $" + String.format(Locale.US, "%.2f", item.path("specialPrice").asDouble(item.path("price").asDouble())));
+        }
+        if (root.has("basedOn")) {
+            lines.add("Reason: " + root.get("basedOn").asText());
+        }
+        return String.join("\n", lines);
+    }
+
+    private String formatCartResponse(JsonNode root) {
+        JsonNode items = root.get("items");
+        if (items == null || items.isEmpty()) {
+            return root.has("message") ? root.get("message").asText() : "Your cart is empty.";
+        }
+
+        List<String> lines = new ArrayList<>();
+        lines.add("Your cart currently contains:");
+        for (int i = 0; i < Math.min(5, items.size()); i++) {
+            JsonNode item = items.get(i);
+            lines.add("- " + item.path("productName").asText()
+                    + " x" + item.path("quantity").asInt()
+                    + " ($" + String.format(Locale.US, "%.2f", item.path("subtotal").asDouble()) + ")");
+        }
+        lines.add("Cart total: $" + String.format(Locale.US, "%.2f", root.path("totalPrice").asDouble()));
+        return String.join("\n", lines);
+    }
+
+    private String formatCartOptimizationResponse(JsonNode root) {
+        if (root.has("message")) {
+            return root.get("message").asText();
+        }
+
+        JsonNode suggestions = root.get("suggestions");
+        if (suggestions == null || suggestions.isEmpty()) {
+            return "I checked your cart but couldn't find cheaper alternatives right now.";
+        }
+
+        List<String> lines = new ArrayList<>();
+        lines.add("I found some ways to reduce your cart total:");
+        for (int i = 0; i < Math.min(3, suggestions.size()); i++) {
+            JsonNode suggestion = suggestions.get(i);
+            JsonNode currentItem = suggestion.path("currentItem");
+            JsonNode alternatives = suggestion.path("alternatives");
+            if (!alternatives.isEmpty()) {
+                JsonNode alternative = alternatives.get(0);
+                lines.add("- Replace " + currentItem.path("productName").asText()
+                        + " with " + alternative.path("productName").asText()
+                        + " to save $" + String.format(Locale.US, "%.2f", alternative.path("savings").asDouble()));
+            }
+        }
+        lines.add("Current total: $" + String.format(Locale.US, "%.2f", root.path("currentTotal").asDouble()));
+        lines.add("Target budget: $" + String.format(Locale.US, "%.2f", root.path("budget").asDouble()));
+        return String.join("\n", lines);
+    }
+
     private List<Map<String, Object>> buildMessages(Long userId, String userMessage) {
         List<Map<String, Object>> messages = new ArrayList<>();
 
@@ -185,6 +428,11 @@ public class SmartCartAgent {
     @SuppressWarnings("unchecked")
     private Map<String, Object> callOpenAI(List<Map<String, Object>> messages) {
         try {
+            if (!aiConfig.hasConfiguredApiKey()) {
+                log.warn("OpenAI API key is missing. Skipping OpenAI call.");
+                return null;
+            }
+
             Map<String, Object> requestBody = new LinkedHashMap<>();
             requestBody.put("model", aiConfig.getModel());
             requestBody.put("messages", messages);
