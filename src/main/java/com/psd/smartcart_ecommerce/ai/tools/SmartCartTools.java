@@ -10,6 +10,7 @@ import com.psd.smartcart_ecommerce.payload.ProductDTO;
 import com.psd.smartcart_ecommerce.payload.ProductResponse;
 import com.psd.smartcart_ecommerce.repositories.CartRepository;
 import com.psd.smartcart_ecommerce.repositories.OrderRepository;
+import com.psd.smartcart_ecommerce.repositories.ProductRepository;
 import com.psd.smartcart_ecommerce.repositories.UserRepository;
 import com.psd.smartcart_ecommerce.services.ProductService;
 import dev.langchain4j.agent.tool.P;
@@ -18,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 
@@ -30,6 +32,9 @@ public class SmartCartTools {
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private ProductRepository productRepository;
 
     @Autowired
     private CartRepository cartRepository;
@@ -74,6 +79,19 @@ public class SmartCartTools {
             }
 
             List<ProductDTO> products = response.getContent();
+
+            // If keyword-only search found nothing, broaden to search product name OR category name
+            if (products.isEmpty() && hasKeyword && !hasCategory) {
+                log.info("No product-name matches for '{}', broadening to include category match", keyword);
+                Pageable pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(
+                        org.springframework.data.domain.Sort.Direction.ASC, "specialPrice"));
+                Page<com.psd.smartcart_ecommerce.models.Product> page =
+                        productRepository.findByProductNameContainingIgnoreCaseOrCategory_CategoryNameContainingIgnoreCase(
+                                keyword, keyword, pageable);
+                products = page.getContent().stream()
+                        .map(this::entityToDto)
+                        .toList();
+            }
 
             // Apply price filters in memory
             if (priceMin != null || priceMax != null) {
@@ -301,5 +319,19 @@ public class SmartCartTools {
         m.put("image", p.getImage());
         if (p.getCategoryName() != null) m.put("category", p.getCategoryName());
         return m;
+    }
+
+    private ProductDTO entityToDto(com.psd.smartcart_ecommerce.models.Product p) {
+        ProductDTO dto = new ProductDTO();
+        dto.setProductId(p.getProductId());
+        dto.setProductName(p.getProductName());
+        dto.setPrice(p.getPrice());
+        dto.setDiscount(p.getDiscount());
+        dto.setSpecialPrice(p.getSpecialPrice());
+        dto.setDescription(p.getDescription());
+        dto.setQuantity(p.getQuantity());
+        dto.setImage(p.getImage());
+        if (p.getCategory() != null) dto.setCategoryName(p.getCategory().getCategoryName());
+        return dto;
     }
 }
