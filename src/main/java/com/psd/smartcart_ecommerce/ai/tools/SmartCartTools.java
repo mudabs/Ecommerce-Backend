@@ -8,7 +8,9 @@ import com.psd.smartcart_ecommerce.models.Order;
 import com.psd.smartcart_ecommerce.models.OrderItem;
 import com.psd.smartcart_ecommerce.payload.ProductDTO;
 import com.psd.smartcart_ecommerce.payload.ProductResponse;
+import com.psd.smartcart_ecommerce.models.Category;
 import com.psd.smartcart_ecommerce.repositories.CartRepository;
+import com.psd.smartcart_ecommerce.repositories.CategoryRepository;
 import com.psd.smartcart_ecommerce.repositories.OrderRepository;
 import com.psd.smartcart_ecommerce.repositories.ProductRepository;
 import com.psd.smartcart_ecommerce.repositories.UserRepository;
@@ -37,7 +39,30 @@ public class SmartCartTools {
     private ProductRepository productRepository;
 
     @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
     private CartRepository cartRepository;
+
+    // Common synonym groups — each array contains terms that mean the same thing.
+    // The resolver matches any synonym to whichever actual DB category contains a related word.
+    private static final String[][] SYNONYM_GROUPS = {
+            {"phone", "cellphone", "cell phone", "smartphone", "mobile", "handset", "iphone", "android phone"},
+            {"laptop", "notebook", "ultrabook", "chromebook", "macbook"},
+            {"headphone", "earphone", "earbuds", "headset", "airpods", "audio"},
+            {"tv", "television", "smart tv", "monitor", "display", "screen"},
+            {"tablet", "ipad", "tab"},
+            {"camera", "dslr", "mirrorless", "webcam", "cam"},
+            {"watch", "smartwatch", "wearable", "fitness tracker"},
+            {"speaker", "soundbar", "bluetooth speaker", "home theater"},
+            {"keyboard", "mechanical keyboard", "wireless keyboard"},
+            {"mouse", "mice", "trackpad", "wireless mouse"},
+            {"printer", "scanner", "copier"},
+            {"router", "modem", "wifi", "networking"},
+            {"gaming", "console", "playstation", "xbox", "nintendo"},
+            {"clothing", "clothes", "apparel", "fashion", "wear", "outfit"},
+            {"shoe", "shoes", "sneaker", "sneakers", "footwear", "boot", "boots", "sandal", "sandals"},
+    };
 
     @Autowired
     private UserRepository userRepository;
@@ -80,17 +105,25 @@ public class SmartCartTools {
 
             List<ProductDTO> products = response.getContent();
 
-            // If keyword-only search found nothing, broaden to search product name OR category name
+            // If keyword-only search found nothing, try synonym-based category resolution
             if (products.isEmpty() && hasKeyword && !hasCategory) {
-                log.info("No product-name matches for '{}', broadening to include category match", keyword);
-                Pageable pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(
-                        org.springframework.data.domain.Sort.Direction.ASC, "specialPrice"));
-                Page<com.psd.smartcart_ecommerce.models.Product> page =
-                        productRepository.findByProductNameContainingIgnoreCaseOrCategory_CategoryNameContainingIgnoreCase(
-                                keyword, keyword, pageable);
-                products = page.getContent().stream()
-                        .map(this::entityToDto)
-                        .toList();
+                String resolvedCategory = resolveCategory(keyword);
+                if (resolvedCategory != null) {
+                    log.info("Resolved '{}' to category '{}' via synonyms", keyword, resolvedCategory);
+                    response = productService.getAllProducts(null, resolvedCategory, 0, 20, "specialPrice", "asc");
+                    products = response.getContent();
+                } else {
+                    // Fall back to OR query across product name + category name
+                    log.info("No synonym match for '{}', broadening to include category name search", keyword);
+                    Pageable pageable = PageRequest.of(0, 20, org.springframework.data.domain.Sort.by(
+                            org.springframework.data.domain.Sort.Direction.ASC, "specialPrice"));
+                    Page<com.psd.smartcart_ecommerce.models.Product> page =
+                            productRepository.findByProductNameContainingIgnoreCaseOrCategory_CategoryNameContainingIgnoreCase(
+                                    keyword, keyword, pageable);
+                    products = page.getContent().stream()
+                            .map(this::entityToDto)
+                            .toList();
+                }
             }
 
             // Apply price filters in memory
@@ -319,6 +352,41 @@ public class SmartCartTools {
         m.put("image", p.getImage());
         if (p.getCategoryName() != null) m.put("category", p.getCategoryName());
         return m;
+    }
+
+    /**
+     * Resolve a user search term to an actual DB category name using synonym groups.
+     * E.g. "cellphone" → finds synonym group containing "phone" → matches DB category "Smartphones".
+     */
+    private String resolveCategory(String keyword) {
+        if (keyword == null || keyword.isBlank()) return null;
+        String lower = keyword.trim().toLowerCase(Locale.ROOT);
+
+        // Find which synonym group(s) the keyword belongs to
+        Set<String> relatedTerms = new LinkedHashSet<>();
+        for (String[] group : SYNONYM_GROUPS) {
+            for (String synonym : group) {
+                if (synonym.contains(lower) || lower.contains(synonym)) {
+                    Collections.addAll(relatedTerms, group);
+                    break;
+                }
+            }
+        }
+
+        if (relatedTerms.isEmpty()) return null;
+
+        // Load all categories from DB and find which one matches any related term
+        List<Category> categories = categoryRepository.findAll();
+        for (Category cat : categories) {
+            String catLower = cat.getCategoryName().toLowerCase(Locale.ROOT);
+            for (String term : relatedTerms) {
+                if (catLower.contains(term) || term.contains(catLower)) {
+                    return cat.getCategoryName();
+                }
+            }
+        }
+
+        return null;
     }
 
     private ProductDTO entityToDto(com.psd.smartcart_ecommerce.models.Product p) {

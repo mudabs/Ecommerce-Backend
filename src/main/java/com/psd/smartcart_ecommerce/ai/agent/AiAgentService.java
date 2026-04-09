@@ -8,6 +8,7 @@ import com.psd.smartcart_ecommerce.ai.memory.UserChatMemoryProvider;
 import com.psd.smartcart_ecommerce.ai.memory.UserPreferenceService;
 import com.psd.smartcart_ecommerce.ai.tools.SmartCartTools;
 import com.psd.smartcart_ecommerce.ai.tools.ToolExecutionContext;
+import com.psd.smartcart_ecommerce.repositories.CategoryRepository;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.PostConstruct;
@@ -39,6 +40,9 @@ public class AiAgentService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     private SmartCartAssistant assistant;
 
@@ -101,7 +105,8 @@ public class AiAgentService {
     private ChatResponse processWithAssistant(Long userId, String userMessage, ToolExecutionContext ctx) {
         try {
             String preferences = preferenceService.buildPreferenceSummary(userId);
-            String reply = assistant.chat(userId, preferences, userMessage);
+            String categories = loadCategoryNames();
+            String reply = assistant.chat(userId, categories, preferences, userMessage);
 
             ChatResponse response = new ChatResponse();
             response.setMessage(reply);
@@ -310,5 +315,17 @@ public class AiAgentService {
         ChatResponse r = new ChatResponse();
         r.setMessage(message);
         return r;
+    }
+
+    private String loadCategoryNames() {
+        try {
+            List<String> names = categoryRepository.findAll().stream()
+                    .map(c -> c.getCategoryName())
+                    .toList();
+            return names.isEmpty() ? "none" : String.join(", ", names);
+        } catch (Exception e) {
+            log.warn("Failed to load categories: {}", e.getMessage());
+            return "unknown";
+        }
     }
 }

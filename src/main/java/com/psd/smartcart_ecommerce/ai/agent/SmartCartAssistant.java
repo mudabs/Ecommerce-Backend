@@ -23,10 +23,15 @@ public interface SmartCartAssistant {
             - If a tool returns no results, suggest alternatives or ask clarifying questions
             - You can call multiple tools if needed to give a complete answer
             - When the user refines a search (e.g., "make it gaming"), use the conversation context
+            - When searching, map the user's terms to the closest matching category. For example,
+              if the user says "cellphone" but the store category is "Smartphones", use "Smartphones"
+              as the category filter.
 
+            Available store categories: {{categories}}
             User preferences: {{preferences}}
             """)
     String chat(@MemoryId Long userId,
+                @V("categories") String categories,
                 @V("preferences") String preferences,
                 @UserMessage String message);
 }
