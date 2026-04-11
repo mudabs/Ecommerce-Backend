@@ -1,4 +1,11 @@
 services:
+  frontend:
+    image: ghcr.io/mudabs/ecommerce-frontend:latest
+    container_name: smartcart_frontend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
   backend:
     image: ghcr.io/mudabs/smartcart-backend:latest
     container_name: smartcart_backend
