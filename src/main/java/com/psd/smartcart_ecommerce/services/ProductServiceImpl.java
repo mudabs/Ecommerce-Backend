@@ -150,7 +150,9 @@ public class ProductServiceImpl implements ProductService {
                     pageDetails
             );
         } else if (hasKeyword) {
-            pageProducts = productRepository.findByProductNameContainingIgnoreCase(normalizedKeyword, pageDetails);
+            // Search product name OR description to improve recall for keyword searches
+            pageProducts = productRepository.findByProductNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                    normalizedKeyword, normalizedKeyword, pageDetails);
         } else if (hasCategory) {
             pageProducts = productRepository.findByCategory_CategoryNameIgnoreCase(normalizedCategory, pageDetails);
         } else {

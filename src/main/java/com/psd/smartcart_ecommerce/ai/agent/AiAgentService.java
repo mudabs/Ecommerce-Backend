@@ -313,7 +313,11 @@ public class AiAgentService {
     private String extractSearchKeyword(String message) {
         if (message == null) return "";
         String normalized = message.toLowerCase(Locale.ROOT)
+                // remove dollar amounts like $800
                 .replaceAll("\\$\\d+(?:\\.\\d+)?", " ")
+                // remove standalone numbers (e.g., '800') so they don't become search tokens
+                .replaceAll("\\b\\d+\\b", " ")
+                // remove other non-alphanumeric characters
                 .replaceAll("[^a-z0-9\\s]", " ");
         List<String> tokens = Arrays.stream(normalized.split("\\s+"))
                 .map(String::trim)

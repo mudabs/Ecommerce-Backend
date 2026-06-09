@@ -14,9 +14,10 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins("http://localhost:3000", frontendUrl)
-                .allowedMethods("GET","POST","PUT","DELETE","OPTIONS")
+                .allowedOrigins("http://localhost:3000", "http://localhost:5173", "https://smartcart.munashemudabura.com", "https://ecommerce-frontend-spring-2026.pages.dev", frontendUrl)
+                .allowedMethods("GET","POST","PUT","DELETE","OPTIONS", "PATCH")
                 .allowedHeaders("*")
-                .allowCredentials(true);
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 }

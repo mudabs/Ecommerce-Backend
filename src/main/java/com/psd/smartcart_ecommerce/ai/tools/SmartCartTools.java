@@ -104,6 +104,7 @@ public class SmartCartTools {
             }
 
             List<ProductDTO> products = response.getContent();
+            log.info("searchProducts: initial returned {} products", products.size());
 
             // If keyword-only search found nothing, try synonym-based category resolution
             if (products.isEmpty() && hasKeyword && !hasCategory) {
@@ -126,13 +127,18 @@ public class SmartCartTools {
                 }
             }
 
-            // Apply price filters in memory
+            // Apply price filters in memory (safely using specialPrice or fallback to price)
             if (priceMin != null || priceMax != null) {
                 double min = priceMin != null ? priceMin : 0;
                 double max = priceMax != null ? priceMax : Double.MAX_VALUE;
                 products = products.stream()
-                        .filter(p -> p.getSpecialPrice() >= min && p.getSpecialPrice() <= max)
+                        .filter(p -> {
+                            double value = (p.getSpecialPrice() != null) ? p.getSpecialPrice() : p.getPrice();
+                            return value >= min && value <= max;
+                        })
                         .toList();
+                log.info("searchProducts: {} products remain after price filter (min={}, max={})",
+                        products.size(), min, max);
             }
 
             if (products.isEmpty()) {
